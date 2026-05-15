@@ -14,7 +14,6 @@ const transports = [
     ),
   }),
 ];
-
 // Solo escribir archivos en desarrollo local
 if (!isVercel) {
   const logsDir = path.join(process.cwd(), 'logs');
