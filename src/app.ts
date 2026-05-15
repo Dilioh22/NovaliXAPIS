@@ -13,7 +13,6 @@ import { runSeeder } from './seed/seeder';
 
 const app = express();
 const server = http.createServer(app);
-
 initSocket(server);
 
 app.use(cors({
@@ -23,7 +22,6 @@ app.use(cors({
   },
   credentials: true,
 }));
-
 app.use(helmet());
 app.use(morgan('combined', {
   stream: { write: (msg: string) => logger.http(msg.trim()) },
@@ -32,25 +30,24 @@ app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 
 app.get('/health', (_req, res) => res.json({ status: 'ok', service: 'NovaliX API', ts: new Date() }));
-
 app.use('/api', router);
-
 app.use(notFoundHandler);
 app.use(errorHandler);
 
-const start = async () => {
-  try {
-    if (env.nodeEnv !== 'test') await runSeeder();
-  } catch (err) {
-    logger.warn('Seeder skipped or failed (non-fatal)');
-  }
+// Solo iniciar servidor en local, no en Vercel
+if (!process.env.VERCEL) {
+  const start = async () => {
+    try {
+      if (env.nodeEnv !== 'test') await runSeeder();
+    } catch (err) {
+      logger.warn('Seeder skipped or failed (non-fatal)');
+    }
+    server.listen(env.port, () => {
+      logger.info(`NovaliX API running on port ${env.port} [${env.nodeEnv}]`);
+      logger.info(`Health: http://localhost:${env.port}/health`);
+    });
+  };
+  start();
+}
 
-  server.listen(env.port, () => {
-    logger.info(`NovaliX API running on port ${env.port} [${env.nodeEnv}]`);
-    logger.info(`Health: http://localhost:${env.port}/health`);
-  });
-};
-
-start();
-
-export { app, server };
+export default app;
