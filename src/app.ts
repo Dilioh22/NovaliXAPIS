@@ -17,7 +17,10 @@ initSocket(server);
 
 app.use(cors({
   origin: (origin, cb) => {
-    if (!origin || env.cors.origins.includes(origin)) return cb(null, true);
+    if (!origin) return cb(null, true);
+    if (origin.endsWith('.vercel.app') || env.cors.origins.includes(origin)) {
+      return cb(null, true);
+    }
     cb(new Error(`CORS: origin ${origin} not allowed`));
   },
   credentials: true,
