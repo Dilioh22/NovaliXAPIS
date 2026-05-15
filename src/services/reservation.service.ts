@@ -1,0 +1,78 @@
+import { PrismaClient } from '@prisma/client';
+import { NotFoundError } from '../middleware/error.middleware';
+
+const prisma = new PrismaClient();
+const include = { table: { include: { zone: true } } };
+
+export const ReservationService = {
+  async getAll(date?: string, status?: string) {
+    return prisma.reservation.findMany({
+      where: {
+        isActive: true,
+        ...(date ? { reservationDate: { gte: new Date(date), lt: new Date(new Date(date).getTime() + 86400000) } } : {}),
+        ...(status ? { status } : {}),
+      },
+      orderBy: { reservationDate: 'asc' },
+      include,
+    });
+  },
+
+  async getByTable(tableId: number) {
+    return prisma.reservation.findMany({ where: { tableId, isActive: true }, orderBy: { reservationDate: 'asc' }, include });
+  },
+
+  async getById(id: number) {
+    const r = await prisma.reservation.findFirst({ where: { id, isActive: true }, include });
+    if (!r) throw new NotFoundError('Reservación', id);
+    return r;
+  },
+
+  async create(data: { tableId: number; customerName: string; customerPhone?: string; partySize?: number; reservationDate: string; notes?: string }) {
+    const table = await prisma.table.findFirst({ where: { id: data.tableId, isActive: true } });
+    if (!table) throw new NotFoundError('Mesa', data.tableId);
+
+    const reservation = await prisma.reservation.create({
+      data: { ...data, reservationDate: new Date(data.reservationDate), partySize: data.partySize ?? 1 },
+      include,
+    });
+
+    if (table.status === 'Libre') {
+      await prisma.table.update({ where: { id: data.tableId }, data: { status: 'Reservada', updatedAt: new Date() } });
+    }
+
+    return reservation;
+  },
+
+  async update(id: number, data: { tableId?: number; customerName?: string; customerPhone?: string; partySize?: number; reservationDate?: string; notes?: string }) {
+    await this.getById(id);
+    return prisma.reservation.update({
+      where: { id },
+      data: { ...data, reservationDate: data.reservationDate ? new Date(data.reservationDate) : undefined, updatedAt: new Date() },
+      include,
+    });
+  },
+
+  async updateStatus(id: number, status: string) {
+    const r = await prisma.reservation.findFirst({ where: { id, isActive: true }, include: { table: true } });
+    if (!r) throw new NotFoundError('Reservación', id);
+
+    await prisma.reservation.update({ where: { id }, data: { status, updatedAt: new Date() } });
+
+    if (['Cancelada', 'Completada', 'NoShow'].includes(status) && r.table.status === 'Reservada') {
+      await prisma.table.update({ where: { id: r.tableId }, data: { status: 'Libre', updatedAt: new Date() } });
+    }
+
+    return this.getById(id);
+  },
+
+  async delete(id: number) {
+    const r = await prisma.reservation.findFirst({ where: { id, isActive: true }, include: { table: true } });
+    if (!r) throw new NotFoundError('Reservación', id);
+
+    await prisma.reservation.update({ where: { id }, data: { isActive: false, updatedAt: new Date() } });
+
+    if (['Pendiente', 'Confirmada'].includes(r.status) && r.table.status === 'Reservada') {
+      await prisma.table.update({ where: { id: r.tableId }, data: { status: 'Libre', updatedAt: new Date() } });
+    }
+  },
+};

@@ -1,0 +1,304 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                 Int                   @id @default(autoincrement())
+  email              String                @unique @db.VarChar(200)
+  passwordHash       String                @db.VarChar(500)
+  firstName          String                @db.VarChar(100)
+  lastName           String                @db.VarChar(100)
+  role               String                @db.VarChar(50)
+  pin                String?               @db.VarChar(10)
+  refreshToken       String?               @db.VarChar(500)
+  refreshTokenExpiry DateTime?
+  lastLoginAt        DateTime?
+  createdAt          DateTime              @default(now())
+  updatedAt          DateTime?
+  isActive           Boolean               @default(true)
+  orders             Order[]
+  openedSessions     CashRegisterSession[] @relation("OpenedBy")
+  closedSessions     CashRegisterSession[] @relation("ClosedBy")
+  payments           Payment[]
+  auditLogs          AuditLog[]
+
+  @@map("Users")
+}
+
+model Category {
+  id           Int       @id @default(autoincrement())
+  name         String    @db.VarChar(100)
+  description  String?   @db.VarChar(500)
+  displayOrder Int       @default(0)
+  iconName     String?   @db.VarChar(100)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime?
+  isActive     Boolean   @default(true)
+  products     Product[]
+
+  @@map("Categories")
+}
+
+model Product {
+  id              Int               @id @default(autoincrement())
+  categoryId      Int
+  name            String            @db.VarChar(200)
+  description     String?           @db.VarChar(1000)
+  price           Decimal           @db.Decimal(18, 2)
+  imageUrl        String?           @db.VarChar(500)
+  preparationTime Int?
+  isAvailable     Boolean           @default(true)
+  displayOrder    Int               @default(0)
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime?
+  isActive        Boolean           @default(true)
+  category        Category          @relation(fields: [categoryId], references: [id])
+  modifiers       ProductModifier[]
+  orderItems      OrderItem[]
+
+  @@map("Products")
+}
+
+model ProductModifier {
+  id                 Int                 @id @default(autoincrement())
+  productId          Int
+  name               String              @db.VarChar(100)
+  priceAdjustment    Decimal             @default(0) @db.Decimal(18, 2)
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime?
+  isActive           Boolean             @default(true)
+  product            Product             @relation(fields: [productId], references: [id], onDelete: Cascade)
+  orderItemModifiers OrderItemModifier[]
+
+  @@map("ProductModifiers")
+}
+
+model TableZone {
+  id          Int       @id @default(autoincrement())
+  name        String    @db.VarChar(100)
+  description String?   @db.VarChar(500)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime?
+  isActive    Boolean   @default(true)
+  tables      Table[]
+
+  @@map("TableZones")
+}
+
+model Table {
+  id           Int           @id @default(autoincrement())
+  zoneId       Int
+  number       Int
+  capacity     Int           @default(4)
+  status       String        @default("Libre") @db.VarChar(50)
+  positionX    Int?
+  positionY    Int?
+  shape        String        @default("rectangle") @db.VarChar(50)
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime?
+  isActive     Boolean       @default(true)
+  zone         TableZone     @relation(fields: [zoneId], references: [id])
+  orders       Order[]
+  reservations Reservation[]
+
+  @@index([zoneId, number])
+  @@map("Tables")
+}
+
+model Order {
+  id              Int         @id @default(autoincrement())
+  orderNumber     String      @unique @db.VarChar(50)
+  tableId         Int?
+  waiterId        Int
+  status          String      @default("Pendiente") @db.VarChar(50)
+  orderType       String      @default("DineIn") @db.VarChar(50)
+  subtotal        Decimal     @default(0) @db.Decimal(18, 2)
+  taxRate         Decimal     @default(0.15) @db.Decimal(5, 4)
+  taxAmount       Decimal     @default(0) @db.Decimal(18, 2)
+  discountAmount  Decimal     @default(0) @db.Decimal(18, 2)
+  discountPercent Decimal     @default(0) @db.Decimal(5, 2)
+  total           Decimal     @default(0) @db.Decimal(18, 2)
+  tipAmount       Decimal     @default(0) @db.Decimal(18, 2)
+  notes           String?     @db.LongText
+  customerName    String?     @db.VarChar(200)
+  customerPhone   String?     @db.VarChar(50)
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime?
+  isActive        Boolean     @default(true)
+  table           Table?      @relation(fields: [tableId], references: [id])
+  waiter          User        @relation(fields: [waiterId], references: [id])
+  items           OrderItem[]
+  payments        Payment[]
+  invoice         Invoice?
+
+  @@map("Orders")
+}
+
+model OrderItem {
+  id              Int                 @id @default(autoincrement())
+  orderId         Int
+  productId       Int
+  quantity        Int                 @default(1)
+  unitPrice       Decimal             @db.Decimal(18, 2)
+  subtotal        Decimal             @db.Decimal(18, 2)
+  status          String              @default("Pendiente") @db.VarChar(50)
+  notes           String?             @db.LongText
+  sentToKitchenAt DateTime?
+  readyAt         DateTime?
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime?
+  isActive        Boolean             @default(true)
+  order           Order               @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product         Product             @relation(fields: [productId], references: [id])
+  modifiers       OrderItemModifier[]
+
+  @@map("OrderItems")
+}
+
+model OrderItemModifier {
+  id                Int             @id @default(autoincrement())
+  orderItemId       Int
+  productModifierId Int
+  name              String          @db.VarChar(100)
+  priceAdjustment   Decimal         @default(0) @db.Decimal(18, 2)
+  createdAt         DateTime        @default(now())
+  orderItem         OrderItem       @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
+  productModifier   ProductModifier @relation(fields: [productModifierId], references: [id])
+
+  @@map("OrderItemModifiers")
+}
+
+model PaymentMethod {
+  id        Int       @id @default(autoincrement())
+  name      String    @db.VarChar(100)
+  code      String    @unique @db.VarChar(50)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime?
+  isActive  Boolean   @default(true)
+  payments  Payment[]
+
+  @@map("PaymentMethods")
+}
+
+model Payment {
+  id              Int                  @id @default(autoincrement())
+  orderId         Int
+  paymentMethodId Int
+  amount          Decimal              @db.Decimal(18, 2)
+  receivedAmount  Decimal?             @db.Decimal(18, 2)
+  changeAmount    Decimal?             @db.Decimal(18, 2)
+  reference       String?              @db.VarChar(200)
+  cashSessionId   Int?
+  processedById   Int
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime?
+  isActive        Boolean              @default(true)
+  order           Order                @relation(fields: [orderId], references: [id])
+  paymentMethod   PaymentMethod        @relation(fields: [paymentMethodId], references: [id])
+  processedBy     User                 @relation(fields: [processedById], references: [id])
+  cashSession     CashRegisterSession? @relation(fields: [cashSessionId], references: [id])
+
+  @@map("Payments")
+}
+
+model CashRegister {
+  id        Int                   @id @default(autoincrement())
+  name      String                @db.VarChar(100)
+  location  String?               @db.VarChar(200)
+  createdAt DateTime              @default(now())
+  updatedAt DateTime?
+  isActive  Boolean               @default(true)
+  sessions  CashRegisterSession[]
+
+  @@map("CashRegisters")
+}
+
+model CashRegisterSession {
+  id               Int           @id @default(autoincrement())
+  cashRegisterId   Int
+  openedById       Int
+  closedById       Int?
+  openingAmount    Decimal       @default(0) @db.Decimal(18, 2)
+  closingAmount    Decimal?      @db.Decimal(18, 2)
+  expectedAmount   Decimal?      @db.Decimal(18, 2)
+  difference       Decimal?      @db.Decimal(18, 2)
+  totalCash        Decimal?      @db.Decimal(18, 2)
+  totalCard        Decimal?      @db.Decimal(18, 2)
+  totalTransfer    Decimal?      @db.Decimal(18, 2)
+  totalSales       Decimal?      @db.Decimal(18, 2)
+  transactionCount Int?
+  status           String        @db.VarChar(50)
+  openedAt         DateTime      @default(now())
+  closedAt         DateTime?
+  notes            String?       @db.LongText
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime?
+  isActive         Boolean       @default(true)
+  cashRegister     CashRegister  @relation(fields: [cashRegisterId], references: [id])
+  openedBy         User          @relation("OpenedBy", fields: [openedById], references: [id])
+  closedBy         User?         @relation("ClosedBy", fields: [closedById], references: [id])
+  payments         Payment[]
+
+  @@map("CashRegisterSessions")
+}
+
+model Invoice {
+  id             Int       @id @default(autoincrement())
+  orderId        Int       @unique
+  invoiceNumber  String    @unique @db.VarChar(50)
+  cai            String?   @db.VarChar(100)
+  rangeFrom      String?   @db.VarChar(50)
+  rangeTo        String?   @db.VarChar(50)
+  expirationDate DateTime?
+  customerRTN    String?   @db.VarChar(50)
+  customerName   String?   @db.VarChar(200)
+  subtotal       Decimal   @default(0) @db.Decimal(18, 2)
+  taxAmount      Decimal   @default(0) @db.Decimal(18, 2)
+  exemptAmount   Decimal   @default(0) @db.Decimal(18, 2)
+  total          Decimal   @default(0) @db.Decimal(18, 2)
+  status         String    @db.VarChar(50)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime?
+  isActive       Boolean   @default(true)
+  order          Order     @relation(fields: [orderId], references: [id])
+
+  @@map("Invoices")
+}
+
+model Reservation {
+  id              Int       @id @default(autoincrement())
+  tableId         Int
+  customerName    String    @db.VarChar(200)
+  customerPhone   String?   @db.VarChar(50)
+  partySize       Int       @default(1)
+  reservationDate DateTime
+  notes           String?   @db.VarChar(500)
+  status          String    @default("Pendiente") @db.VarChar(50)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime?
+  isActive        Boolean   @default(true)
+  table           Table     @relation(fields: [tableId], references: [id])
+
+  @@index([tableId, reservationDate])
+  @@map("Reservations")
+}
+
+model AuditLog {
+  id         Int      @id @default(autoincrement())
+  userId     Int?
+  action     String   @db.VarChar(100)
+  entityType String   @db.VarChar(100)
+  entityId   Int?
+  oldValues  String?  @db.LongText
+  newValues  String?  @db.LongText
+  ipAddress  String?  @db.VarChar(50)
+  createdAt  DateTime @default(now())
+  user       User?    @relation(fields: [userId], references: [id])
+
+  @@map("AuditLogs")
+}
