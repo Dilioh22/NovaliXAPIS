@@ -4,7 +4,7 @@ import fs from 'fs';
 
 const isVercel = !!process.env.VERCEL;
 
-const transports = [
+const transports: winston.transport[] = [
   new winston.transports.Console({
     format: winston.format.combine(
       winston.format.colorize(),
@@ -14,7 +14,7 @@ const transports = [
     ),
   }),
 ];
-// Solo escribir archivos en desarrollo local
+
 if (!isVercel) {
   const logsDir = path.join(process.cwd(), 'logs');
   if (!fs.existsSync(logsDir)) fs.mkdirSync(logsDir, { recursive: true });
