@@ -5,7 +5,7 @@
   "main": "dist/app.js",
   "scripts": {
     "dev": "ts-node-dev --respawn --transpile-only src/app.ts",
-    "build": "prisma generate && tsc",
+    "build": "prisma generate && next build",
     "start": "node dist/app.js",
     "seed": "ts-node src/seed/seeder.ts",
     "db:push": "prisma db push",
