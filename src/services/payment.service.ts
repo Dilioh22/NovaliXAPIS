@@ -59,9 +59,10 @@ export const PaymentService = {
       await prisma.order.update({ where: { id: data.orderId }, data: { status: 'Pagado', updatedAt: new Date() } });
       if (order.tableId) {
         await prisma.table.update({ where: { id: order.tableId }, data: { status: 'Libre', updatedAt: new Date() } });
-        getIO()?.to('tables').emit('table:updated', { tableId: order.tableId, status: 'Libre' });
+        getIO()?.to('tables').emit('TableStatusChanged', { tableId: order.tableId, status: 'Libre' });
       }
-      getIO()?.to('cashier').emit('order:paid', { orderId: data.orderId });
+      getIO()?.to('cashier').emit('OrderPaid', { orderId: data.orderId });
+      getIO()?.to('kitchen').emit('OrderPaid', { orderId: data.orderId });
     }
 
     return { ...payment, isOrderFullyPaid: isFullyPaid };

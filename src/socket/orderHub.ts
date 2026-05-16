@@ -38,6 +38,13 @@ export function initSocket(httpServer: HttpServer): SocketServer {
 
     socket.on('join:kitchen', () => socket.join('kitchen'));
     socket.on('join:cashier', () => socket.join('cashier'));
+    socket.on('join:tables',  () => socket.join('tables'));
+    socket.on('join:waiter',  () => socket.join('waiter'));
+
+    socket.on('leave:kitchen', () => socket.leave('kitchen'));
+    socket.on('leave:cashier', () => socket.leave('cashier'));
+    socket.on('leave:tables',  () => socket.leave('tables'));
+    socket.on('leave:waiter',  () => socket.leave('waiter'));
 
     socket.on('disconnect', () => logger.info(`Socket desconectado: ${socket.id}`));
   });

@@ -15,6 +15,32 @@ const orderInclude = {
   payments: { where: { isActive: true }, include: { paymentMethod: true } },
 };
 
+function mapOrder(order: any): any {
+  if (!order) return order;
+  return {
+    ...order,
+    waiterName: order.waiter ? `${order.waiter.firstName} ${order.waiter.lastName}`.trim() : '',
+    tableNumber: order.table?.number ?? null,
+    subtotal: Number(order.subtotal),
+    taxAmount: Number(order.taxAmount),
+    discountAmount: Number(order.discountAmount),
+    discountPercent: Number(order.discountPercent),
+    total: Number(order.total),
+    tipAmount: Number(order.tipAmount),
+    items: (order.items ?? []).map((item: any) => ({
+      ...item,
+      productName: item.product?.name ?? '',
+      unitPrice: Number(item.unitPrice),
+      subtotal: Number(item.subtotal),
+      modifiers: (item.modifiers ?? []).map((m: any) => ({
+        id: m.id,
+        name: m.name,
+        priceAdjustment: Number(m.priceAdjustment),
+      })),
+    })),
+  };
+}
+
 function calcTotals(items: { unitPrice: Prisma.Decimal; quantity: number; modifiers: { priceAdjustment: Prisma.Decimal }[] }[], discountPercent = 0, discountAmount = 0, tipAmount = 0, taxRate = 0.15) {
   const subtotal = items.reduce((sum, item) => {
     const modTotal = item.modifiers.reduce((s, m) => s + Number(m.priceAdjustment), 0);
@@ -31,40 +57,44 @@ function calcTotals(items: { unitPrice: Prisma.Decimal; quantity: number; modifi
 
 export const OrderService = {
   async getAllOrders(status?: string) {
-    return prisma.order.findMany({
+    const orders = await prisma.order.findMany({
       where: { isActive: true, ...(status ? { status } : {}) },
       orderBy: { createdAt: 'desc' },
       include: orderInclude,
     });
+    return orders.map(mapOrder);
   },
 
   async getActiveOrders() {
-    return prisma.order.findMany({
+    const orders = await prisma.order.findMany({
       where: { isActive: true, status: { notIn: ['Pagado', 'Cancelado'] } },
       orderBy: { createdAt: 'asc' },
       include: orderInclude,
     });
+    return orders.map(mapOrder);
   },
 
   async getActiveOrdersForKitchen() {
-    return prisma.order.findMany({
+    const orders = await prisma.order.findMany({
       where: { isActive: true, status: { in: ['Pendiente', 'EnPreparacion'] } },
       orderBy: { createdAt: 'asc' },
       include: orderInclude,
     });
+    return orders.map(mapOrder);
   },
 
   async getOrderById(id: number) {
     const o = await prisma.order.findFirst({ where: { id, isActive: true }, include: orderInclude });
     if (!o) throw new NotFoundError('Orden', id);
-    return o;
+    return mapOrder(o);
   },
 
   async getOrderByTable(tableId: number) {
-    return prisma.order.findFirst({
+    const o = await prisma.order.findFirst({
       where: { tableId, isActive: true, status: { notIn: ['Pagado', 'Cancelado'] } },
       include: orderInclude,
     });
+    return o ? mapOrder(o) : o;
   },
 
   async createOrder(waiterId: number, data: {
@@ -123,10 +153,11 @@ export const OrderService = {
       await prisma.table.update({ where: { id: data.tableId }, data: { status: 'Ocupada', updatedAt: new Date() } });
     }
 
-    getIO()?.to('kitchen').emit('order:new', order);
-    getIO()?.to('tables').emit('table:updated', { tableId: data.tableId, status: 'Ocupada' });
+    const mapped = mapOrder(order);
+    getIO()?.to('kitchen').emit('NewOrder', mapped);
+    getIO()?.to('tables').emit('TableStatusChanged', { tableId: data.tableId, status: 'Ocupada' });
 
-    return order;
+    return mapped;
   },
 
   async addItemToOrder(orderId: number, item: { productId: number; quantity: number; modifierIds?: number[]; notes?: string }) {
@@ -192,30 +223,32 @@ export const OrderService = {
       include: orderInclude,
     });
 
-    getIO()?.to('kitchen').emit('order:updated', updated);
-    return updated;
+    getIO()?.to('kitchen').emit('OrderUpdated', mapOrder(updated));
+    return mapOrder(updated);
   },
 
   async markOrderItemReady(orderId: number, itemId: number) {
     await this.getOrderById(orderId);
     await prisma.orderItem.update({ where: { id: itemId }, data: { status: 'Listo', readyAt: new Date(), updatedAt: new Date() } });
 
+    getIO()?.to('waiter').emit('ItemStatusChanged', { orderId, itemId, status: 'Listo' });
+    getIO()?.to('kitchen').emit('ItemStatusChanged', { orderId, itemId, status: 'Listo' });
+
     const pending = await prisma.orderItem.count({ where: { orderId, status: { not: 'Listo' }, isActive: true } });
     if (pending === 0) {
       await prisma.order.update({ where: { id: orderId }, data: { status: 'Listo', updatedAt: new Date() } });
+      getIO()?.to('waiter').emit('OrderReady', { orderId });
+      getIO()?.to('kitchen').emit('OrderReady', { orderId });
     }
 
-    const order = await this.getOrderById(orderId);
-    getIO()?.to('waiter').emit('order:updated', order);
-    getIO()?.to('kitchen').emit('order:updated', order);
-    return order;
+    return this.getOrderById(orderId);
   },
 
   async updateOrderStatus(id: number, status: string) {
     await this.getOrderById(id);
     const updated = await prisma.order.update({ where: { id }, data: { status, updatedAt: new Date() }, include: orderInclude });
-    getIO()?.emit('order:updated', updated);
-    return updated;
+    getIO()?.emit('OrderUpdated', mapOrder(updated));
+    return mapOrder(updated);
   },
 
   async cancelOrder(id: number) {
@@ -226,21 +259,22 @@ export const OrderService = {
 
     if (order.tableId) {
       await prisma.table.update({ where: { id: order.tableId }, data: { status: 'Libre', updatedAt: new Date() } });
-      getIO()?.to('tables').emit('table:updated', { tableId: order.tableId, status: 'Libre' });
+      getIO()?.to('tables').emit('TableStatusChanged', { tableId: order.tableId, status: 'Libre' });
     }
 
-    getIO()?.emit('order:updated', updated);
-    return updated;
+    getIO()?.emit('OrderCancelled', { orderId: id });
+    return mapOrder(updated);
   },
 
   async recalcAndSave(orderId: number, discountPercent: number, discountAmount: number, tipAmount: number) {
     const items = await prisma.orderItem.findMany({ where: { orderId, isActive: true }, include: { modifiers: true } });
     const { subtotal, taxAmount, total } = calcTotals(items as never, discountPercent, discountAmount, tipAmount);
 
-    return prisma.order.update({
+    const updated = await prisma.order.update({
       where: { id: orderId },
       data: { subtotal, taxAmount, discountPercent, discountAmount, tipAmount, total, updatedAt: new Date() },
       include: orderInclude,
     });
+    return mapOrder(updated);
   },
 };
