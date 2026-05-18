@@ -12,6 +12,9 @@ export const OrderController = {
   getKitchen: async (_req: Request, res: Response, next: NextFunction) => {
     try { res.json(await OrderService.getActiveOrdersForKitchen()); } catch (e) { next(e); }
   },
+  getMyOrders: async (req: Request, res: Response, next: NextFunction) => {
+    try { res.json(await OrderService.getActiveOrdersByWaiter(req.user!.sub)); } catch (e) { next(e); }
+  },
   getById: async (req: Request, res: Response, next: NextFunction) => {
     try { res.json(await OrderService.getOrderById(+req.params['id']!)); } catch (e) { next(e); }
   },

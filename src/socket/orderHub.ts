@@ -52,6 +52,8 @@ export function initSocket(httpServer: HttpServer): SocketServer {
       socket.join('waiter');
     }
     socket.join('tables');
+    // Sala personal para notificaciones dirigidas (ej. WaiterOrderReady)
+    if (user?.sub) socket.join(`waiter:${user.sub}`);
 
     // Explicit join requests with role validation
     socket.on('join:kitchen', () => {

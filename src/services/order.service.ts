@@ -85,6 +85,15 @@ export const OrderService = {
     return orders.map(mapOrder);
   },
 
+  async getActiveOrdersByWaiter(waiterId: number) {
+    const orders = await prisma.order.findMany({
+      where: { isActive: true, waiterId, status: { notIn: ['Pagado', 'Cancelado'] } },
+      orderBy: { createdAt: 'desc' },
+      include: orderInclude,
+    });
+    return orders.map(mapOrder);
+  },
+
   async getOrderById(id: number) {
     const o = await prisma.order.findFirst({ where: { id, isActive: true }, include: orderInclude });
     if (!o) throw new NotFoundError('Orden', id);
@@ -244,19 +253,25 @@ export const OrderService = {
   },
 
   async markOrderItemReady(orderId: number, itemId: number) {
-    await this.getOrderById(orderId);
+    const order = await this.getOrderById(orderId);
     const item = await prisma.orderItem.findFirst({ where: { id: itemId, orderId, isActive: true } });
     if (!item) throw new NotFoundError('Item', itemId);
 
     await prisma.orderItem.update({ where: { id: itemId }, data: { status: 'Listo', readyAt: new Date(), updatedAt: new Date() } });
 
+    // Notificación personal al mesero + visibilidad general
+    const itemReadyPayload = { orderId, itemId, orderNumber: order.orderNumber, tableNumber: order.tableNumber, waiterId: order.waiterId };
+    getIO()?.to(`waiter:${order.waiterId}`).emit('ItemReadyForWaiter', itemReadyPayload);
     getIO()?.to('waiter').emit('ItemStatusChanged', { orderId, itemId, status: 'Listo' });
     getIO()?.to('kitchen').emit('ItemStatusChanged', { orderId, itemId, status: 'Listo' });
 
     const pending = await prisma.orderItem.count({ where: { orderId, status: { not: 'Listo' }, isActive: true } });
     if (pending === 0) {
       await prisma.order.update({ where: { id: orderId }, data: { status: 'Listo', updatedAt: new Date() } });
-      getIO()?.to('waiter').emit('OrderReady', { orderId });
+      const readyPayload = { orderId, orderNumber: order.orderNumber, tableNumber: order.tableNumber, waiterId: order.waiterId };
+      getIO()?.to(`waiter:${order.waiterId}`).emit('WaiterOrderReady', readyPayload);
+      const generalPayload = { orderId, orderNumber: order.orderNumber, tableNumber: order.tableNumber, waiterId: order.waiterId };
+      getIO()?.to('waiter').emit('OrderReady', generalPayload);
       getIO()?.to('kitchen').emit('OrderReady', { orderId });
     }
 
@@ -266,8 +281,17 @@ export const OrderService = {
   async updateOrderStatus(id: number, status: string) {
     await this.getOrderById(id);
     const updated = await prisma.order.update({ where: { id }, data: { status, updatedAt: new Date() }, include: orderInclude });
-    getIO()?.emit('OrderUpdated', mapOrder(updated));
-    return mapOrder(updated);
+    const mapped = mapOrder(updated);
+    getIO()?.emit('OrderUpdated', mapped);
+
+    if (status === 'Listo' && mapped.waiterId) {
+      const readyPayload = { orderId: id, orderNumber: mapped.orderNumber, tableNumber: mapped.tableNumber, waiterId: mapped.waiterId };
+      getIO()?.to(`waiter:${mapped.waiterId}`).emit('WaiterOrderReady', readyPayload);
+      getIO()?.to('waiter').emit('OrderReady', readyPayload);
+      getIO()?.to('kitchen').emit('OrderReady', { orderId: id });
+    }
+
+    return mapped;
   },
 
   async cancelOrder(id: number) {

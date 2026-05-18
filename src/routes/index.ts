@@ -57,11 +57,12 @@ router.delete('/tables/:id',         authenticate, authorize('Admin'), TableCont
 router.get('/orders',                             authenticate, OrderController.getAll);
 router.get('/orders/active',                      authenticate, OrderController.getActive);
 router.get('/orders/kitchen',                     authenticate, authorize('Admin', 'Cocinero'), OrderController.getKitchen);
+router.get('/orders/my-orders',                   authenticate, authorize('Admin', 'Mesero'), OrderController.getMyOrders);
 router.get('/orders/table/:tableId',              authenticate, OrderController.getByTable);
 router.get('/orders/:id',                         authenticate, OrderController.getById);
 router.post('/orders',                            authenticate, authorize('Admin', 'Mesero'), OrderController.create);
 router.put('/orders/:id',                         authenticate, OrderController.update);
-router.patch('/orders/:id/status',                authenticate, authorize('Admin'), OrderController.updateStatus);
+router.patch('/orders/:id/status',                authenticate, authorize('Admin', 'Cocinero'), OrderController.updateStatus);
 router.post('/orders/:id/send-to-kitchen',        authenticate, authorize('Admin', 'Mesero'), OrderController.sendToKitchen);
 router.post('/orders/:id/cancel',                 authenticate, authorize('Admin', 'Cajero'), OrderController.cancel);
 router.post('/orders/:id/items',                  authenticate, authorize('Admin', 'Mesero'), OrderController.addItem);
