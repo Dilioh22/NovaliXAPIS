@@ -1,7 +1,5 @@
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '../lib/prisma';
 import bcrypt from 'bcryptjs';
-
-const prisma = new PrismaClient();
 
 async function main() {
   console.log('Seeding database…');
@@ -70,10 +68,10 @@ async function main() {
   // Users
   if (!(await prisma.user.count())) {
     await prisma.user.createMany({ data: [
-      { email: 'admin@restaurante.com',    passwordHash: await bcrypt.hash('Admin123!',   11), firstName: 'Administrador', lastName: 'Sistema',   role: 'Admin',    pin: '1234' },
-      { email: 'cajero@restaurante.com',   passwordHash: await bcrypt.hash('Cajero123!',  11), firstName: 'Carlos',        lastName: 'García',    role: 'Cajero',   pin: '2222' },
-      { email: 'mesero@restaurante.com',   passwordHash: await bcrypt.hash('Mesero123!',  11), firstName: 'María',         lastName: 'López',     role: 'Mesero',   pin: '3333' },
-      { email: 'cocinero@restaurante.com', passwordHash: await bcrypt.hash('Cocina123!',  11), firstName: 'Juan',          lastName: 'Martínez',  role: 'Cocinero', pin: '4444' },
+      { email: 'admin@restaurante.com',    passwordHash: await bcrypt.hash('Admin123!',   11), firstName: 'Administrador', lastName: 'Sistema',   role: 'Admin',    pin: await bcrypt.hash('1234', 11) },
+      { email: 'cajero@restaurante.com',   passwordHash: await bcrypt.hash('Cajero123!',  11), firstName: 'Carlos',        lastName: 'García',    role: 'Cajero',   pin: await bcrypt.hash('2222', 11) },
+      { email: 'mesero@restaurante.com',   passwordHash: await bcrypt.hash('Mesero123!',  11), firstName: 'María',         lastName: 'López',     role: 'Mesero',   pin: await bcrypt.hash('3333', 11) },
+      { email: 'cocinero@restaurante.com', passwordHash: await bcrypt.hash('Cocina123!',  11), firstName: 'Juan',          lastName: 'Martínez',  role: 'Cocinero', pin: await bcrypt.hash('4444', 11) },
     ]});
     console.log('✓ Usuarios');
   }
@@ -90,7 +88,7 @@ async function main() {
   console.log('Seed completado.');
 }
 
-export async function runSeeder() { await main(); await prisma.$disconnect(); }
+export async function runSeeder() { await main(); }
 
 if (require.main === module) {
   main().catch(console.error).finally(() => prisma.$disconnect());

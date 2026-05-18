@@ -1,7 +1,6 @@
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '../lib/prisma';
 import { NotFoundError, BusinessRuleError } from '../middleware/error.middleware';
-
-const prisma = new PrismaClient();
+import { getIO } from '../socket/orderHub';
 
 const tableInclude = {
   zone: true,
@@ -56,7 +55,9 @@ export const TableService = {
 
   async updateTableStatus(id: number, status: string) {
     await this.getTableById(id);
-    return prisma.table.update({ where: { id }, data: { status, updatedAt: new Date() } });
+    const table = await prisma.table.update({ where: { id }, data: { status, updatedAt: new Date() } });
+    getIO()?.to('tables').emit('TableStatusChanged', { tableId: id, status });
+    return table;
   },
 
   async deleteTable(id: number) {

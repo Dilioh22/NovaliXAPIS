@@ -1,9 +1,8 @@
-import { PrismaClient, Prisma } from '@prisma/client';
+import { Prisma } from '@prisma/client';
+import { prisma } from '../lib/prisma';
 import { NotFoundError, BusinessRuleError } from '../middleware/error.middleware';
 import { generateOrderNumber } from '../utils/orderNumber';
 import { getIO } from '../socket/orderHub';
-
-const prisma = new PrismaClient();
 
 const orderInclude = {
   table: { include: { zone: true } },
@@ -56,11 +55,14 @@ function calcTotals(items: { unitPrice: Prisma.Decimal; quantity: number; modifi
 }
 
 export const OrderService = {
-  async getAllOrders(status?: string) {
+  async getAllOrders(status?: string, page = 1, pageSize = 50) {
+    const skip = (page - 1) * pageSize;
     const orders = await prisma.order.findMany({
       where: { isActive: true, ...(status ? { status } : {}) },
       orderBy: { createdAt: 'desc' },
       include: orderInclude,
+      skip,
+      take: pageSize,
     });
     return orders.map(mapOrder);
   },
@@ -131,31 +133,39 @@ export const OrderService = {
     const taxAmount = subtotal * taxRate;
     const total = subtotal + taxAmount;
 
-    const order = await prisma.order.create({
-      data: {
-        orderNumber,
-        tableId: data.tableId,
-        waiterId,
-        orderType: data.orderType ?? 'DineIn',
-        notes: data.notes,
-        customerName: data.customerName,
-        customerPhone: data.customerPhone,
-        subtotal,
-        taxRate,
-        taxAmount,
-        total,
-        items: { create: itemsData },
-      },
-      include: orderInclude,
-    });
+    const order = await prisma.$transaction(async (tx) => {
+      if (data.tableId) {
+        const table = await tx.table.findFirst({
+          where: { id: data.tableId, status: 'Libre', isActive: true },
+        });
+        if (!table) throw new BusinessRuleError('La mesa no está disponible.');
+        await tx.table.update({ where: { id: data.tableId }, data: { status: 'Ocupada', updatedAt: new Date() } });
+      }
 
-    if (data.tableId) {
-      await prisma.table.update({ where: { id: data.tableId }, data: { status: 'Ocupada', updatedAt: new Date() } });
-    }
+      return tx.order.create({
+        data: {
+          orderNumber,
+          tableId: data.tableId,
+          waiterId,
+          orderType: data.orderType ?? 'DineIn',
+          notes: data.notes,
+          customerName: data.customerName,
+          customerPhone: data.customerPhone,
+          subtotal,
+          taxRate,
+          taxAmount,
+          total,
+          items: { create: itemsData },
+        },
+        include: orderInclude,
+      });
+    });
 
     const mapped = mapOrder(order);
     getIO()?.to('kitchen').emit('NewOrder', mapped);
-    getIO()?.to('tables').emit('TableStatusChanged', { tableId: data.tableId, status: 'Ocupada' });
+    if (data.tableId) {
+      getIO()?.to('tables').emit('TableStatusChanged', { tableId: data.tableId, status: 'Ocupada' });
+    }
 
     return mapped;
   },
@@ -210,6 +220,12 @@ export const OrderService = {
 
   async sendToKitchen(orderId: number) {
     const order = await this.getOrderById(orderId);
+
+    const pendingItems = await prisma.orderItem.count({
+      where: { orderId, status: 'Pendiente', isActive: true },
+    });
+    if (pendingItems === 0) throw new BusinessRuleError('No hay ítems pendientes de enviar a cocina.');
+
     const now = new Date();
 
     await prisma.orderItem.updateMany({
@@ -229,6 +245,9 @@ export const OrderService = {
 
   async markOrderItemReady(orderId: number, itemId: number) {
     await this.getOrderById(orderId);
+    const item = await prisma.orderItem.findFirst({ where: { id: itemId, orderId, isActive: true } });
+    if (!item) throw new NotFoundError('Item', itemId);
+
     await prisma.orderItem.update({ where: { id: itemId }, data: { status: 'Listo', readyAt: new Date(), updatedAt: new Date() } });
 
     getIO()?.to('waiter').emit('ItemStatusChanged', { orderId, itemId, status: 'Listo' });

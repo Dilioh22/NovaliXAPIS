@@ -1,8 +1,8 @@
-import { PrismaClient } from '@prisma/client';
-import { NotFoundError } from '../middleware/error.middleware';
+import { prisma } from '../lib/prisma';
+import { NotFoundError, BusinessRuleError } from '../middleware/error.middleware';
 
-const prisma = new PrismaClient();
 const include = { table: { include: { zone: true } } };
+const CONFLICT_WINDOW_MS = 90 * 60 * 1000;
 
 export const ReservationService = {
   async getAll(date?: string, status?: string) {
@@ -31,8 +31,29 @@ export const ReservationService = {
     const table = await prisma.table.findFirst({ where: { id: data.tableId, isActive: true } });
     if (!table) throw new NotFoundError('Mesa', data.tableId);
 
+    const partySize = data.partySize ?? 1;
+    if (partySize > table.capacity) {
+      throw new BusinessRuleError(`La mesa #${table.number} tiene capacidad para ${table.capacity} personas.`);
+    }
+
+    const requestedAt = new Date(data.reservationDate);
+    const windowStart = new Date(requestedAt.getTime() - CONFLICT_WINDOW_MS);
+    const windowEnd   = new Date(requestedAt.getTime() + CONFLICT_WINDOW_MS);
+
+    const conflict = await prisma.reservation.findFirst({
+      where: {
+        tableId: data.tableId,
+        isActive: true,
+        status: { notIn: ['Cancelada', 'Completada', 'NoShow'] },
+        reservationDate: { gte: windowStart, lte: windowEnd },
+      },
+    });
+    if (conflict) {
+      throw new BusinessRuleError('Existe una reservación en un rango de 90 minutos para esa mesa.');
+    }
+
     const reservation = await prisma.reservation.create({
-      data: { ...data, reservationDate: new Date(data.reservationDate), partySize: data.partySize ?? 1 },
+      data: { ...data, reservationDate: requestedAt, partySize },
       include,
     });
 

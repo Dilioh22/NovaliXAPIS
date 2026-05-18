@@ -8,6 +8,18 @@ let io: SocketServer | null = null;
 
 export function getIO(): SocketServer | null { return io; }
 
+type AuthSocket = Socket & { user?: { role?: string; sub?: number } };
+
+function canJoin(role: string | undefined, room: string): boolean {
+  switch (room) {
+    case 'kitchen': return role === 'Cocinero' || role === 'Admin';
+    case 'cashier': return role === 'Cajero'   || role === 'Admin';
+    case 'waiter':  return role === 'Mesero'   || role === 'Admin';
+    case 'tables':  return true;
+    default:        return false;
+  }
+}
+
 export function initSocket(httpServer: HttpServer): SocketServer {
   io = new SocketServer(httpServer, {
     cors: { origin: env.cors.origins, methods: ['GET', 'POST'] },
@@ -19,7 +31,7 @@ export function initSocket(httpServer: HttpServer): SocketServer {
       const token = socket.handshake.auth?.token ?? socket.handshake.query?.access_token as string;
       if (!token) return next(new Error('Token no proporcionado.'));
       const payload = verifyAccessToken(token as string);
-      (socket as Socket & { user?: unknown }).user = payload;
+      (socket as AuthSocket).user = payload;
       next();
     } catch {
       next(new Error('Token inválido.'));
@@ -27,19 +39,31 @@ export function initSocket(httpServer: HttpServer): SocketServer {
   });
 
   io.on('connection', (socket: Socket) => {
-    const user = (socket as Socket & { user?: { role?: string; sub?: number } }).user;
+    const user = (socket as AuthSocket).user;
     logger.info(`Socket conectado: ${socket.id} role=${user?.role}`);
 
-    // Auto-join groups by role
+    // Auto-join rooms by role
     if (user?.role === 'Cocinero') socket.join('kitchen');
     if (user?.role === 'Cajero')   socket.join('cashier');
     if (user?.role === 'Mesero')   socket.join('waiter');
+    if (user?.role === 'Admin') {
+      socket.join('kitchen');
+      socket.join('cashier');
+      socket.join('waiter');
+    }
     socket.join('tables');
 
-    socket.on('join:kitchen', () => socket.join('kitchen'));
-    socket.on('join:cashier', () => socket.join('cashier'));
-    socket.on('join:tables',  () => socket.join('tables'));
-    socket.on('join:waiter',  () => socket.join('waiter'));
+    // Explicit join requests with role validation
+    socket.on('join:kitchen', () => {
+      if (canJoin(user?.role, 'kitchen')) socket.join('kitchen');
+    });
+    socket.on('join:cashier', () => {
+      if (canJoin(user?.role, 'cashier')) socket.join('cashier');
+    });
+    socket.on('join:tables', () => socket.join('tables'));
+    socket.on('join:waiter', () => {
+      if (canJoin(user?.role, 'waiter')) socket.join('waiter');
+    });
 
     socket.on('leave:kitchen', () => socket.leave('kitchen'));
     socket.on('leave:cashier', () => socket.leave('cashier'));

@@ -1,4 +1,5 @@
 import jwt from 'jsonwebtoken';
+import { randomBytes } from 'crypto';
 import { env } from '../config/env';
 
 export interface JwtPayload {
@@ -23,7 +24,7 @@ export const verifyAccessToken = (token: string): JwtPayload =>
   }) as unknown as JwtPayload;
 
 export const generateRefreshToken = (): string =>
-  require('crypto').randomBytes(64).toString('hex');
+  randomBytes(64).toString('hex');
 
 export const refreshTokenExpiry = (): Date => {
   const d = new Date();

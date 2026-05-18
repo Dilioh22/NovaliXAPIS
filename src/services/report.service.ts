@@ -1,6 +1,4 @@
-import { PrismaClient } from '@prisma/client';
-
-const prisma = new PrismaClient();
+import { prisma } from '../lib/prisma';
 
 export const ReportService = {
   async getSalesReport(from: string, to: string) {
@@ -15,21 +13,18 @@ export const ReportService = {
     const totalTips = orders.reduce((s, o) => s + Number(o.tipAmount), 0);
     const netSales = totalSales - totalTax;
 
-    // Sales by day
     const byDay: Record<string, number> = {};
     orders.forEach(o => {
       const day = o.createdAt.toISOString().slice(0, 10);
       byDay[day] = (byDay[day] ?? 0) + Number(o.total);
     });
 
-    // Sales by payment method
     const byMethod: Record<string, number> = {};
     orders.flatMap(o => o.payments).forEach(p => {
       const name = p.paymentMethod.name;
       byMethod[name] = (byMethod[name] ?? 0) + Number(p.amount);
     });
 
-    // Waiter performance
     const byWaiter: Record<number, { name: string; orders: number; total: number }> = {};
     orders.forEach(o => {
       if (!byWaiter[o.waiterId]) byWaiter[o.waiterId] = { name: `${o.waiter.firstName} ${o.waiter.lastName}`, orders: 0, total: 0 };
@@ -37,7 +32,6 @@ export const ReportService = {
       byWaiter[o.waiterId]!.total += Number(o.total);
     });
 
-    // Top products
     const byProduct: Record<number, { name: string; category: string; qty: number; total: number }> = {};
     orders.flatMap(o => o.items).forEach(item => {
       const pid = item.productId;
@@ -66,18 +60,27 @@ export const ReportService = {
   },
 
   async getTopProducts(limit = 10) {
-    const items = await prisma.orderItem.findMany({
-      where: { isActive: true, order: { status: 'Pagado' } },
-      include: { product: { include: { category: true } } },
+    const groups = await prisma.orderItem.groupBy({
+      by: ['productId'],
+      where: { isActive: true, order: { status: 'Pagado', isActive: true } },
+      _sum: { quantity: true, subtotal: true },
+      orderBy: { _sum: { quantity: 'desc' } },
+      take: limit,
     });
 
-    const map: Record<number, { productId: number; name: string; category: string; quantity: number; total: number }> = {};
-    items.forEach(i => {
-      if (!map[i.productId]) map[i.productId] = { productId: i.productId, name: i.product.name, category: i.product.category.name, quantity: 0, total: 0 };
-      map[i.productId]!.quantity += i.quantity;
-      map[i.productId]!.total += Number(i.subtotal);
+    const productIds = groups.map(g => g.productId);
+    const products = await prisma.product.findMany({
+      where: { id: { in: productIds } },
+      include: { category: true },
     });
+    const productMap = new Map(products.map(p => [p.id, p]));
 
-    return Object.values(map).sort((a, b) => b.quantity - a.quantity).slice(0, limit);
+    return groups.map(g => ({
+      productId: g.productId,
+      name: productMap.get(g.productId)?.name ?? '',
+      category: productMap.get(g.productId)?.category.name ?? '',
+      quantity: g._sum.quantity ?? 0,
+      total: Number(g._sum.subtotal ?? 0),
+    }));
   },
 };

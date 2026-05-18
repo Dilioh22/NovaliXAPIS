@@ -1,7 +1,5 @@
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '../lib/prisma';
 import { NotFoundError, BusinessRuleError } from '../middleware/error.middleware';
-
-const prisma = new PrismaClient();
 
 const productInclude = {
   category: true,

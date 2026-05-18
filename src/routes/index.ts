@@ -56,17 +56,17 @@ router.delete('/tables/:id',         authenticate, authorize('Admin'), TableCont
 // ── Orders ────────────────────────────────────────────────────
 router.get('/orders',                             authenticate, OrderController.getAll);
 router.get('/orders/active',                      authenticate, OrderController.getActive);
-router.get('/orders/kitchen',                     authenticate, OrderController.getKitchen);
+router.get('/orders/kitchen',                     authenticate, authorize('Admin', 'Cocinero'), OrderController.getKitchen);
 router.get('/orders/table/:tableId',              authenticate, OrderController.getByTable);
 router.get('/orders/:id',                         authenticate, OrderController.getById);
-router.post('/orders',                            authenticate, OrderController.create);
+router.post('/orders',                            authenticate, authorize('Admin', 'Mesero'), OrderController.create);
 router.put('/orders/:id',                         authenticate, OrderController.update);
-router.patch('/orders/:id/status',                authenticate, OrderController.updateStatus);
-router.post('/orders/:id/send-to-kitchen',        authenticate, OrderController.sendToKitchen);
-router.post('/orders/:id/cancel',                 authenticate, OrderController.cancel);
-router.post('/orders/:id/items',                  authenticate, OrderController.addItem);
-router.delete('/orders/:id/items/:itemId',        authenticate, OrderController.removeItem);
-router.patch('/orders/:id/items/:itemId/ready',   authenticate, OrderController.markItemReady);
+router.patch('/orders/:id/status',                authenticate, authorize('Admin'), OrderController.updateStatus);
+router.post('/orders/:id/send-to-kitchen',        authenticate, authorize('Admin', 'Mesero'), OrderController.sendToKitchen);
+router.post('/orders/:id/cancel',                 authenticate, authorize('Admin', 'Cajero'), OrderController.cancel);
+router.post('/orders/:id/items',                  authenticate, authorize('Admin', 'Mesero'), OrderController.addItem);
+router.delete('/orders/:id/items/:itemId',        authenticate, authorize('Admin', 'Mesero'), OrderController.removeItem);
+router.patch('/orders/:id/items/:itemId/ready',   authenticate, authorize('Admin', 'Cocinero'), OrderController.markItemReady);
 
 // ── Payments ──────────────────────────────────────────────────
 router.get('/payments/methods',       authenticate, PaymentController.getMethods);
@@ -85,9 +85,9 @@ router.post('/cash-registers/sessions/:id/close', authenticate, authorize('Admin
 router.get('/reservations',              authenticate, ReservationController.getAll);
 router.get('/reservations/table/:tableId', authenticate, ReservationController.getByTable);
 router.get('/reservations/:id',          authenticate, ReservationController.getById);
-router.post('/reservations',             authenticate, ReservationController.create);
-router.put('/reservations/:id',          authenticate, ReservationController.update);
-router.patch('/reservations/:id/status', authenticate, ReservationController.updateStatus);
+router.post('/reservations',             authenticate, authorize('Admin', 'Cajero', 'Mesero'), ReservationController.create);
+router.put('/reservations/:id',          authenticate, authorize('Admin', 'Cajero', 'Mesero'), ReservationController.update);
+router.patch('/reservations/:id/status', authenticate, authorize('Admin', 'Cajero'), ReservationController.updateStatus);
 router.delete('/reservations/:id',       authenticate, authorize('Admin'), ReservationController.delete);
 
 // ── Invoices ──────────────────────────────────────────────────

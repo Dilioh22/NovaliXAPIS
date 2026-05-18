@@ -12,10 +12,8 @@ declare global {
 
 export function authenticate(req: Request, _res: Response, next: NextFunction): void {
   try {
-    // Support token in Authorization header or query string (for Socket.io)
     const authHeader = req.headers.authorization;
-    const queryToken = req.query.access_token as string | undefined;
-    const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : queryToken;
+    const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : undefined;
 
     if (!token) throw new UnauthorizedError('Token no proporcionado.');
 

@@ -1,9 +1,15 @@
 import bcrypt from 'bcryptjs';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '../lib/prisma';
 import { signAccessToken, generateRefreshToken, refreshTokenExpiry } from '../utils/jwt';
 import { NotFoundError, BusinessRuleError, UnauthorizedError } from '../middleware/error.middleware';
+import { env } from '../config/env';
 
-const prisma = new PrismaClient();
+function tokenExpiresAt(): Date {
+  const val = env.jwt.expiresIn;
+  const match = val.match(/^(\d+)m$/);
+  const minutes = match ? parseInt(match[1], 10) : 60;
+  return new Date(Date.now() + minutes * 60 * 1000);
+}
 
 export const AuthService = {
   async login(email: string, password: string) {
@@ -24,7 +30,7 @@ export const AuthService = {
     return {
       accessToken: token,
       refreshToken: refresh,
-      expiresAt: new Date(Date.now() + 480 * 60 * 1000),
+      expiresAt: tokenExpiresAt(),
       user: mapUser(user),
     };
   },
@@ -44,7 +50,7 @@ export const AuthService = {
       data: { refreshToken: newRefresh, refreshTokenExpiry: refreshTokenExpiry() },
     });
 
-    return { accessToken: newAccess, refreshToken: newRefresh, expiresAt: new Date(Date.now() + 480 * 60 * 1000), user: mapUser(user) };
+    return { accessToken: newAccess, refreshToken: newRefresh, expiresAt: tokenExpiresAt(), user: mapUser(user) };
   },
 
   async revokeToken(userId: number) {
@@ -73,15 +79,18 @@ export const AuthService = {
     if (exists) throw new BusinessRuleError('Ya existe un usuario con ese email.');
 
     const hash = await bcrypt.hash(data.password, 11);
+    const pinHash = data.pin ? await bcrypt.hash(data.pin, 11) : undefined;
     const user = await prisma.user.create({
-      data: { email: data.email, passwordHash: hash, firstName: data.firstName, lastName: data.lastName, role: data.role, pin: data.pin },
+      data: { email: data.email, passwordHash: hash, firstName: data.firstName, lastName: data.lastName, role: data.role, pin: pinHash },
     });
     return mapUser(user);
   },
 
   async updateUser(id: number, data: { firstName?: string; lastName?: string; role?: string; pin?: string }) {
     await this.getUserById(id);
-    const user = await prisma.user.update({ where: { id }, data: { ...data, updatedAt: new Date() } });
+    const { pin, ...rest } = data;
+    const pinHash = pin ? await bcrypt.hash(pin, 11) : undefined;
+    const user = await prisma.user.update({ where: { id }, data: { ...rest, ...(pinHash ? { pin: pinHash } : {}), updatedAt: new Date() } });
     return mapUser(user);
   },
 
@@ -99,7 +108,7 @@ export const AuthService = {
   },
 };
 
-function mapUser(u: { id: number; email: string; firstName: string; lastName: string; role: string; pin: string | null; isActive: boolean; lastLoginAt: Date | null; createdAt: Date }) {
+function mapUser(u: { id: number; email: string; firstName: string; lastName: string; role: string; isActive: boolean; lastLoginAt: Date | null; createdAt: Date }) {
   return {
     id: u.id,
     email: u.email,
@@ -107,7 +116,6 @@ function mapUser(u: { id: number; email: string; firstName: string; lastName: st
     lastName: u.lastName,
     fullName: `${u.firstName} ${u.lastName}`,
     role: u.role,
-    pin: u.pin,
     isActive: u.isActive,
     lastLoginAt: u.lastLoginAt,
     createdAt: u.createdAt,

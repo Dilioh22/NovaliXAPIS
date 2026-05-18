@@ -1,17 +1,20 @@
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '../lib/prisma';
 import { NotFoundError, BusinessRuleError } from '../middleware/error.middleware';
-
-const prisma = new PrismaClient();
 
 const sessionInclude = { cashRegister: true, openedBy: true, closedBy: true };
 
 export const CashRegisterService = {
   async getAllCashRegisters() {
-    const registers = await prisma.cashRegister.findMany({ where: { isActive: true } });
-    return Promise.all(registers.map(async (r) => {
-      const session = await prisma.cashRegisterSession.findFirst({ where: { cashRegisterId: r.id, status: 'Open' } });
-      return { ...r, currentSession: session };
-    }));
+    const registers = await prisma.cashRegister.findMany({
+      where: { isActive: true },
+      include: {
+        sessions: {
+          where: { status: 'Open' },
+          take: 1,
+        },
+      },
+    });
+    return registers.map(r => ({ ...r, currentSession: r.sessions[0] ?? null }));
   },
 
   async getMyActiveSession(userId: number) {
@@ -51,6 +54,15 @@ export const CashRegisterService = {
   async closeSession(sessionId: number, userId: number, data: { closingAmount: number; notes?: string }) {
     const session = await prisma.cashRegisterSession.findFirst({ where: { id: sessionId, status: 'Open' } });
     if (!session) throw new NotFoundError('Sesión', sessionId);
+
+    const openOrders = await prisma.order.count({
+      where: {
+        payments: { some: { cashSessionId: sessionId, isActive: true } },
+        status: { notIn: ['Pagado', 'Cancelado'] },
+        isActive: true,
+      },
+    });
+    if (openOrders > 0) throw new BusinessRuleError(`Hay ${openOrders} orden(es) sin cerrar en esta sesión.`);
 
     const payments = await prisma.payment.findMany({
       where: { cashSessionId: sessionId, isActive: true },
