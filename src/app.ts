@@ -11,10 +11,19 @@ import router from './routes';
 import { errorHandler, notFoundHandler } from './middleware/error.middleware';
 import { initSocket } from './socket/orderHub';
 import { runSeeder } from './seed/seeder';
+import { initSpeedInsights, speedInsightsMiddleware } from './utils/speed-insights';
 
 const app = express();
 const server = http.createServer(app);
 initSocket(server);
+
+// Initialize Vercel Speed Insights when running on Vercel
+// Note: Speed Insights is designed for client-side performance tracking.
+// This API primarily serves JSON, so metrics will only be collected if HTML pages are served.
+if (process.env.VERCEL) {
+  initSpeedInsights();
+  logger.info('Speed Insights initialized for Vercel environment');
+}
 
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -38,6 +47,9 @@ app.use(morgan('combined', {
 }));
 app.use(express.json({ limit: '1mb' }));
 app.use(express.urlencoded({ extended: true }));
+
+// Inject Speed Insights script into HTML responses (if any)
+app.use(speedInsightsMiddleware());
 
 app.get('/health', (_req, res) => res.json({ status: 'ok', service: 'NovaliX API', ts: new Date() }));
 app.use('/api/auth', authLimiter);
