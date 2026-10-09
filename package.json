@@ -11,7 +11,9 @@
     "seed": "ts-node src/seed/seeder.ts",
     "db:push": "prisma db push",
     "db:generate": "prisma generate",
-    "db:migrate": "prisma migrate dev"
+    "db:migrate": "prisma migrate dev",
+    "verify:availability": "ts-node src/scripts/verify-availability.ts",
+    "test:availability": "ts-node src/scripts/availability.offline.test.ts"
   },
   "dependencies": {
     "@prisma/client": "^5.22.0",
@@ -35,6 +37,7 @@
     "@types/morgan": "^1.9.9",
     "@types/node": "^22.10.1",
     "prisma": "^5.22.0",
+    "socket.io-client": "^4.8.4",
     "ts-node-dev": "^2.0.0",
     "typescript": "^5.7.2"
   }

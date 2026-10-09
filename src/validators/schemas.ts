@@ -57,6 +57,8 @@ export const createProductSchema = z.object({
 
 export const updateProductSchema = createProductSchema.omit({ modifiers: true }).partial();
 
+export const toggleAvailabilitySchema = z.object({ isAvailable: z.boolean().optional() });
+
 export const createTableZoneSchema = z.object({
   name: z.string().min(1).max(100),
   description: z.string().max(500).optional(),
