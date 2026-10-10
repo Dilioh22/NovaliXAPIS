@@ -9,8 +9,8 @@ export const CashRegisterController = {
   getMySession: async (req: Request, res: Response, next: NextFunction) => {
     try { res.json(await CashRegisterService.getMyActiveSession(req.user!.sub)); } catch (e) { next(e); }
   },
-  getHistory: async (_req: Request, res: Response, next: NextFunction) => {
-    try { res.json(await CashRegisterService.getSessionHistory()); } catch (e) { next(e); }
+  getHistory: async (req: Request, res: Response, next: NextFunction) => {
+    try { res.json(await CashRegisterService.getSessionHistory(req.query['from'] as string, req.query['to'] as string)); } catch (e) { next(e); }
   },
   getSessionById: async (req: Request, res: Response, next: NextFunction) => {
     try { res.json(await CashRegisterService.getSessionById(+req.params['id']!)); } catch (e) { next(e); }

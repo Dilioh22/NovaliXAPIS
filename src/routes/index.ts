@@ -79,7 +79,7 @@ router.get('/cash-registers',          authenticate, CashRegisterController.getA
 router.get('/cash-registers/my-session', authenticate, CashRegisterController.getMySession);
 router.get('/cash-registers/history',  authenticate, authorize('Admin'), CashRegisterController.getHistory);
 router.get('/cash-registers/sessions/:id', authenticate, CashRegisterController.getSessionById);
-router.post('/cash-registers/open',    authenticate, authorize('Admin', 'Cajero'), CashRegisterController.openSession);
+router.post('/cash-registers/sessions/open', authenticate, authorize('Admin', 'Cajero'), CashRegisterController.openSession);
 router.post('/cash-registers/sessions/:id/close', authenticate, authorize('Admin', 'Cajero'), CashRegisterController.closeSession);
 
 // ── Reservations ──────────────────────────────────────────────
@@ -100,6 +100,7 @@ router.patch('/invoices/:id/void',   authenticate, authorize('Admin'), InvoiceCo
 
 // ── Reports ───────────────────────────────────────────────────
 router.get('/reports/sales',        authenticate, authorize('Admin'), ReportController.getSalesReport);
+router.get('/reports/hourly',       authenticate, authorize('Admin'), ReportController.getHourlySales);
 router.get('/reports/today',        authenticate, authorize('Admin', 'Cajero'), ReportController.getToday);
 router.get('/reports/top-products', authenticate, authorize('Admin'), ReportController.getTopProducts);
 

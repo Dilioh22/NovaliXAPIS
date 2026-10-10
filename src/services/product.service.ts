@@ -28,11 +28,11 @@ export const ProductService = {
     return cat;
   },
 
-  async createCategory(data: { name: string; description?: string; displayOrder?: number; iconName?: string }) {
+  async createCategory(data: { name: string; description?: string; displayOrder?: number; iconName?: string; requiresKitchen?: boolean }) {
     return prisma.category.create({ data });
   },
 
-  async updateCategory(id: number, data: { name?: string; description?: string; displayOrder?: number; iconName?: string }) {
+  async updateCategory(id: number, data: { name?: string; description?: string; displayOrder?: number; iconName?: string; requiresKitchen?: boolean }) {
     await this.getCategoryById(id);
     return prisma.category.update({ where: { id }, data: { ...data, updatedAt: new Date() } });
   },

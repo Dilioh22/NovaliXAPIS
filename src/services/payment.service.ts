@@ -33,7 +33,7 @@ export const PaymentService = {
       const totalPaid = order.payments.reduce((s, p) => s + Number(p.amount), 0);
       const remaining = Number(order.total) - totalPaid;
 
-      if (data.amount > remaining + 0.01) throw new BusinessRuleError(`El monto excede el saldo pendiente de L ${remaining.toFixed(2)}.`);
+      if (data.amount > remaining + 0.01) throw new BusinessRuleError(`El monto excede el saldo pendiente de L ${remaining.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}.`);
 
       const changeAmount = data.receivedAmount ? Math.max(0, data.receivedAmount - data.amount) : undefined;
 

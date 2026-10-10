@@ -4,7 +4,7 @@ generator client {
 }
 
 datasource db {
-  provider = "mysql"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
@@ -17,17 +17,19 @@ model User {
   role               String                @db.VarChar(50)
   pin                String?               @db.VarChar(60)
   refreshToken       String?               @db.VarChar(500)
-  refreshTokenExpiry DateTime?
-  lastLoginAt        DateTime?
-  createdAt          DateTime              @default(now())
-  updatedAt          DateTime?
+  refreshTokenExpiry DateTime?             @db.Timestamptz(6)
+  lastLoginAt        DateTime?             @db.Timestamptz(6)
+  createdAt          DateTime              @default(now()) @db.Timestamptz(6)
+  updatedAt          DateTime?             @db.Timestamptz(6)
   isActive           Boolean               @default(true)
-  orders             Order[]
-  openedSessions     CashRegisterSession[] @relation("OpenedBy")
-  closedSessions     CashRegisterSession[] @relation("ClosedBy")
-  payments           Payment[]
   auditLogs          AuditLog[]
+  closedSessions     CashRegisterSession[] @relation("ClosedBy")
+  openedSessions     CashRegisterSession[] @relation("OpenedBy")
+  orders             Order[]
+  payments           Payment[]
 
+  @@index([email, isActive], map: "IX_Users_Email_Active")
+  @@index([role], map: "IX_Users_Role")
   @@map("Users")
 }
 
@@ -37,11 +39,14 @@ model Category {
   description  String?   @db.VarChar(500)
   displayOrder Int       @default(0)
   iconName     String?   @db.VarChar(100)
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime?
+  /// false = sus productos no pasan por cocina (p. ej. bebidas): quedan "Listo" al enviar el pedido.
+  requiresKitchen Boolean @default(true)
+  createdAt    DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt    DateTime? @db.Timestamptz(6)
   isActive     Boolean   @default(true)
   products     Product[]
 
+  @@index([isActive], map: "IX_Categories_IsActive")
   @@map("Categories")
 }
 
@@ -55,13 +60,15 @@ model Product {
   preparationTime Int?
   isAvailable     Boolean           @default(true)
   displayOrder    Int               @default(0)
-  createdAt       DateTime          @default(now())
-  updatedAt       DateTime?
+  createdAt       DateTime          @default(now()) @db.Timestamptz(6)
+  updatedAt       DateTime?         @db.Timestamptz(6)
   isActive        Boolean           @default(true)
-  category        Category          @relation(fields: [categoryId], references: [id])
-  modifiers       ProductModifier[]
   orderItems      OrderItem[]
+  modifiers       ProductModifier[]
+  category        Category          @relation(fields: [categoryId], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
+  @@index([categoryId], map: "IX_Products_CategoryId")
+  @@index([isAvailable, isActive], map: "IX_Products_IsAvailable")
   @@map("Products")
 }
 
@@ -70,12 +77,13 @@ model ProductModifier {
   productId          Int
   name               String              @db.VarChar(100)
   priceAdjustment    Decimal             @default(0) @db.Decimal(18, 2)
-  createdAt          DateTime            @default(now())
-  updatedAt          DateTime?
+  createdAt          DateTime            @default(now()) @db.Timestamptz(6)
+  updatedAt          DateTime?           @db.Timestamptz(6)
   isActive           Boolean             @default(true)
-  product            Product             @relation(fields: [productId], references: [id], onDelete: Cascade)
   orderItemModifiers OrderItemModifier[]
+  product            Product             @relation(fields: [productId], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
+  @@index([productId], map: "IX_ProductModifiers_ProductId")
   @@map("ProductModifiers")
 }
 
@@ -83,8 +91,8 @@ model TableZone {
   id          Int       @id @default(autoincrement())
   name        String    @db.VarChar(100)
   description String?   @db.VarChar(500)
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime?
+  createdAt   DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt   DateTime? @db.Timestamptz(6)
   isActive    Boolean   @default(true)
   tables      Table[]
 
@@ -94,20 +102,21 @@ model TableZone {
 model Table {
   id           Int           @id @default(autoincrement())
   zoneId       Int
-  number       Int
+  number       Int           @unique(map: "UQ_Tables_Number")
   capacity     Int           @default(4)
   status       String        @default("Libre") @db.VarChar(50)
   positionX    Int?
   positionY    Int?
   shape        String        @default("rectangle") @db.VarChar(50)
-  createdAt    DateTime      @default(now())
-  updatedAt    DateTime?
+  createdAt    DateTime      @default(now()) @db.Timestamptz(6)
+  updatedAt    DateTime?     @db.Timestamptz(6)
   isActive     Boolean       @default(true)
-  zone         TableZone     @relation(fields: [zoneId], references: [id])
   orders       Order[]
   reservations Reservation[]
+  zone         TableZone     @relation(fields: [zoneId], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
-  @@index([zoneId, number])
+  @@index([status], map: "IX_Tables_Status")
+  @@index([zoneId, number], map: "IX_Tables_ZoneId_Number")
   @@map("Tables")
 }
 
@@ -125,20 +134,22 @@ model Order {
   discountPercent Decimal     @default(0) @db.Decimal(5, 2)
   total           Decimal     @default(0) @db.Decimal(18, 2)
   tipAmount       Decimal     @default(0) @db.Decimal(18, 2)
-  notes           String?     @db.LongText
+  notes           String?
   customerName    String?     @db.VarChar(200)
   customerPhone   String?     @db.VarChar(50)
-  createdAt       DateTime    @default(now())
-  updatedAt       DateTime?
+  createdAt       DateTime    @default(now()) @db.Timestamptz(6)
+  updatedAt       DateTime?   @db.Timestamptz(6)
   isActive        Boolean     @default(true)
-  table           Table?      @relation(fields: [tableId], references: [id])
-  waiter          User        @relation(fields: [waiterId], references: [id])
-  items           OrderItem[]
-  payments        Payment[]
   invoice         Invoice?
+  items           OrderItem[]
+  table           Table?      @relation(fields: [tableId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  waiter          User        @relation(fields: [waiterId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  payments        Payment[]
 
-  @@index([status, isActive])
-  @@index([tableId, isActive])
+  @@index([createdAt(sort: Desc)], map: "IX_Orders_CreatedAt")
+  @@index([status, isActive], map: "IX_Orders_Status_Active")
+  @@index([tableId, isActive], map: "IX_Orders_TableId_Active")
+  @@index([waiterId], map: "IX_Orders_WaiterId")
   @@map("Orders")
 }
 
@@ -150,17 +161,19 @@ model OrderItem {
   unitPrice       Decimal             @db.Decimal(18, 2)
   subtotal        Decimal             @db.Decimal(18, 2)
   status          String              @default("Pendiente") @db.VarChar(50)
-  notes           String?             @db.LongText
-  sentToKitchenAt DateTime?
-  readyAt         DateTime?
-  createdAt       DateTime            @default(now())
-  updatedAt       DateTime?
+  notes           String?
+  sentToKitchenAt DateTime?           @db.Timestamptz(6)
+  readyAt         DateTime?           @db.Timestamptz(6)
+  createdAt       DateTime            @default(now()) @db.Timestamptz(6)
+  updatedAt       DateTime?           @db.Timestamptz(6)
   isActive        Boolean             @default(true)
-  order           Order               @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  product         Product             @relation(fields: [productId], references: [id])
   modifiers       OrderItemModifier[]
+  order           Order               @relation(fields: [orderId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  product         Product             @relation(fields: [productId], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
-  @@index([orderId, isActive])
+  @@index([orderId, isActive], map: "IX_OrderItems_OrderId_Active")
+  @@index([productId], map: "IX_OrderItems_ProductId")
+  @@index([status], map: "IX_OrderItems_Status")
   @@map("OrderItems")
 }
 
@@ -170,10 +183,11 @@ model OrderItemModifier {
   productModifierId Int
   name              String          @db.VarChar(100)
   priceAdjustment   Decimal         @default(0) @db.Decimal(18, 2)
-  createdAt         DateTime        @default(now())
-  orderItem         OrderItem       @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
-  productModifier   ProductModifier @relation(fields: [productModifierId], references: [id])
+  createdAt         DateTime        @default(now()) @db.Timestamptz(6)
+  orderItem         OrderItem       @relation(fields: [orderItemId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  productModifier   ProductModifier @relation(fields: [productModifierId], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
+  @@index([orderItemId], map: "IX_OrderItemModifiers_OrderItemId")
   @@map("OrderItemModifiers")
 }
 
@@ -181,8 +195,8 @@ model PaymentMethod {
   id        Int       @id @default(autoincrement())
   name      String    @db.VarChar(100)
   code      String    @unique @db.VarChar(50)
-  createdAt DateTime  @default(now())
-  updatedAt DateTime?
+  createdAt DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime? @db.Timestamptz(6)
   isActive  Boolean   @default(true)
   payments  Payment[]
 
@@ -199,14 +213,17 @@ model Payment {
   reference       String?              @db.VarChar(200)
   cashSessionId   Int?
   processedById   Int
-  createdAt       DateTime             @default(now())
-  updatedAt       DateTime?
+  createdAt       DateTime             @default(now()) @db.Timestamptz(6)
+  updatedAt       DateTime?            @db.Timestamptz(6)
   isActive        Boolean              @default(true)
-  order           Order                @relation(fields: [orderId], references: [id])
-  paymentMethod   PaymentMethod        @relation(fields: [paymentMethodId], references: [id])
-  processedBy     User                 @relation(fields: [processedById], references: [id])
-  cashSession     CashRegisterSession? @relation(fields: [cashSessionId], references: [id])
+  cashSession     CashRegisterSession? @relation(fields: [cashSessionId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  order           Order                @relation(fields: [orderId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  paymentMethod   PaymentMethod        @relation(fields: [paymentMethodId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  processedBy     User                 @relation(fields: [processedById], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
+  @@index([cashSessionId], map: "IX_Payments_CashSessionId")
+  @@index([createdAt(sort: Desc)], map: "IX_Payments_CreatedAt")
+  @@index([orderId], map: "IX_Payments_OrderId")
   @@map("Payments")
 }
 
@@ -214,8 +231,8 @@ model CashRegister {
   id        Int                   @id @default(autoincrement())
   name      String                @db.VarChar(100)
   location  String?               @db.VarChar(200)
-  createdAt DateTime              @default(now())
-  updatedAt DateTime?
+  createdAt DateTime              @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime?             @db.Timestamptz(6)
   isActive  Boolean               @default(true)
   sessions  CashRegisterSession[]
 
@@ -223,31 +240,33 @@ model CashRegister {
 }
 
 model CashRegisterSession {
-  id               Int           @id @default(autoincrement())
+  id               Int          @id @default(autoincrement())
   cashRegisterId   Int
   openedById       Int
   closedById       Int?
-  openingAmount    Decimal       @default(0) @db.Decimal(18, 2)
-  closingAmount    Decimal?      @db.Decimal(18, 2)
-  expectedAmount   Decimal?      @db.Decimal(18, 2)
-  difference       Decimal?      @db.Decimal(18, 2)
-  totalCash        Decimal?      @db.Decimal(18, 2)
-  totalCard        Decimal?      @db.Decimal(18, 2)
-  totalTransfer    Decimal?      @db.Decimal(18, 2)
-  totalSales       Decimal?      @db.Decimal(18, 2)
+  openingAmount    Decimal      @default(0) @db.Decimal(18, 2)
+  closingAmount    Decimal?     @db.Decimal(18, 2)
+  expectedAmount   Decimal?     @db.Decimal(18, 2)
+  difference       Decimal?     @db.Decimal(18, 2)
+  totalCash        Decimal?     @db.Decimal(18, 2)
+  totalCard        Decimal?     @db.Decimal(18, 2)
+  totalTransfer    Decimal?     @db.Decimal(18, 2)
+  totalSales       Decimal?     @db.Decimal(18, 2)
   transactionCount Int?
-  status           String        @db.VarChar(50)
-  openedAt         DateTime      @default(now())
-  closedAt         DateTime?
-  notes            String?       @db.LongText
-  createdAt        DateTime      @default(now())
-  updatedAt        DateTime?
-  isActive         Boolean       @default(true)
-  cashRegister     CashRegister  @relation(fields: [cashRegisterId], references: [id])
-  openedBy         User          @relation("OpenedBy", fields: [openedById], references: [id])
-  closedBy         User?         @relation("ClosedBy", fields: [closedById], references: [id])
+  status           String       @db.VarChar(50)
+  openedAt         DateTime     @default(now()) @db.Timestamptz(6)
+  closedAt         DateTime?    @db.Timestamptz(6)
+  notes            String?
+  createdAt        DateTime     @default(now()) @db.Timestamptz(6)
+  updatedAt        DateTime?    @db.Timestamptz(6)
+  isActive         Boolean      @default(true)
+  cashRegister     CashRegister @relation(fields: [cashRegisterId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  closedBy         User?        @relation("ClosedBy", fields: [closedById], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  openedBy         User         @relation("OpenedBy", fields: [openedById], references: [id], onDelete: NoAction, onUpdate: NoAction)
   payments         Payment[]
 
+  @@index([openedAt(sort: Desc)], map: "IX_CashSessions_OpenedAt")
+  @@index([status], map: "IX_CashSessions_Status")
   @@map("CashRegisterSessions")
 }
 
@@ -258,7 +277,7 @@ model Invoice {
   cai            String?   @db.VarChar(100)
   rangeFrom      String?   @db.VarChar(50)
   rangeTo        String?   @db.VarChar(50)
-  expirationDate DateTime?
+  expirationDate DateTime? @db.Date
   customerRTN    String?   @db.VarChar(50)
   customerName   String?   @db.VarChar(200)
   subtotal       Decimal   @default(0) @db.Decimal(18, 2)
@@ -266,11 +285,13 @@ model Invoice {
   exemptAmount   Decimal   @default(0) @db.Decimal(18, 2)
   total          Decimal   @default(0) @db.Decimal(18, 2)
   status         String    @db.VarChar(50)
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime?
+  createdAt      DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt      DateTime? @db.Timestamptz(6)
   isActive       Boolean   @default(true)
-  order          Order     @relation(fields: [orderId], references: [id])
+  order          Order     @relation(fields: [orderId], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
+  @@index([createdAt(sort: Desc)], map: "IX_Invoices_CreatedAt")
+  @@index([orderId], map: "IX_Invoices_OrderId")
   @@map("Invoices")
 }
 
@@ -280,15 +301,15 @@ model Reservation {
   customerName    String    @db.VarChar(200)
   customerPhone   String?   @db.VarChar(50)
   partySize       Int       @default(1)
-  reservationDate DateTime
+  reservationDate DateTime  @db.Timestamptz(6)
   notes           String?   @db.VarChar(500)
   status          String    @default("Pendiente") @db.VarChar(50)
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime?
+  createdAt       DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt       DateTime? @db.Timestamptz(6)
   isActive        Boolean   @default(true)
-  table           Table     @relation(fields: [tableId], references: [id])
+  table           Table     @relation(fields: [tableId], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
-  @@index([tableId, reservationDate])
+  @@index([tableId, reservationDate], map: "IX_Reservations_TableId_Date")
   @@map("Reservations")
 }
 
@@ -298,11 +319,13 @@ model AuditLog {
   action     String   @db.VarChar(100)
   entityType String   @db.VarChar(100)
   entityId   Int?
-  oldValues  String?  @db.LongText
-  newValues  String?  @db.LongText
+  oldValues  Json?
+  newValues  Json?
   ipAddress  String?  @db.VarChar(50)
-  createdAt  DateTime @default(now())
-  user       User?    @relation(fields: [userId], references: [id])
+  createdAt  DateTime @default(now()) @db.Timestamptz(6)
+  user       User?    @relation(fields: [userId], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
+  @@index([createdAt(sort: Desc)], map: "IX_AuditLogs_CreatedAt")
+  @@index([entityType, entityId], map: "IX_AuditLogs_EntityType")
   @@map("AuditLogs")
 }

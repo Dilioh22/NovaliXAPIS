@@ -9,7 +9,7 @@ const orderInclude = {
   waiter: true,
   items: {
     where: { isActive: true },
-    include: { product: true, modifiers: true },
+    include: { product: { include: { category: true } }, modifiers: true },
   },
   payments: { where: { isActive: true }, include: { paymentMethod: true } },
 };
@@ -29,6 +29,8 @@ function mapOrder(order: any): any {
     items: (order.items ?? []).map((item: any) => ({
       ...item,
       productName: item.product?.name ?? '',
+      // false = no pasa por cocina (bebidas): el KDS no lo muestra.
+      requiresKitchen: item.product?.category?.requiresKitchen !== false,
       unitPrice: Number(item.unitPrice),
       subtotal: Number(item.subtotal),
       modifiers: (item.modifiers ?? []).map((m: any) => ({
@@ -47,9 +49,10 @@ function calcTotals(items: { unitPrice: Prisma.Decimal; quantity: number; modifi
   }, 0);
 
   const discount = discountPercent > 0 ? subtotal * (discountPercent / 100) : discountAmount;
+  // Los precios ya incluyen el ISV; se extrae para mostrarlo desglosado, no se suma de nuevo.
   const taxable = subtotal - discount;
-  const tax = taxable * taxRate;
-  const total = taxable + tax + tipAmount;
+  const tax = taxable - taxable / (1 + taxRate);
+  const total = taxable + tipAmount;
 
   return { subtotal, taxAmount: tax, discountAmount: discount, total };
 }
@@ -139,8 +142,9 @@ export const OrderService = {
 
     const subtotal = itemsData.reduce((s, i) => s + i.subtotal, 0);
     const taxRate = 0.15;
-    const taxAmount = subtotal * taxRate;
-    const total = subtotal + taxAmount;
+    // Los precios ya incluyen el ISV; se extrae para mostrarlo desglosado, no se suma de nuevo.
+    const taxAmount = subtotal - subtotal / (1 + taxRate);
+    const total = subtotal;
 
     const order = await prisma.$transaction(async (tx) => {
       if (data.tableId) {
@@ -238,18 +242,32 @@ export const OrderService = {
 
     const now = new Date();
 
+    // Productos de categorías que no pasan por cocina (bebidas): quedan listos al enviar;
+    // el mesero los sirve directamente.
+    await prisma.orderItem.updateMany({
+      where: { orderId, status: 'Pendiente', isActive: true, product: { category: { requiresKitchen: false } } },
+      data: { status: 'Listo', sentToKitchenAt: now, readyAt: now },
+    });
+
     await prisma.orderItem.updateMany({
       where: { orderId, status: 'Pendiente', isActive: true },
       data: { status: 'EnPreparacion', sentToKitchenAt: now },
     });
 
+    // Si no queda nada por preparar (solo bebidas), el pedido queda Listo sin pasar por cocina.
+    const stillCooking = await prisma.orderItem.count({
+      where: { orderId, isActive: true, status: { notIn: ['Listo', 'Entregado', 'Cancelado'] } },
+    });
+    const status = stillCooking === 0 ? 'Listo' : 'EnPreparacion';
+
     const updated = await prisma.order.update({
       where: { id: orderId },
-      data: { status: 'EnPreparacion', updatedAt: now },
+      data: { status, updatedAt: now },
       include: orderInclude,
     });
 
     getIO()?.to('kitchen').emit('OrderUpdated', mapOrder(updated));
+    if (status === 'Listo') getIO()?.to('kitchen').emit('OrderReady', { orderId });
     return mapOrder(updated);
   },
 
