@@ -1,10 +1,16 @@
 import { prisma } from '../lib/prisma';
 import { NotFoundError, BusinessRuleError } from '../middleware/error.middleware';
+import { getIO } from '../socket/orderHub';
 
 const productInclude = {
   category: true,
   modifiers: { where: { isActive: true } },
 };
+
+/** #13: avisa a todos los conectados que cambió la disponibilidad de un producto. */
+function notifyAvailability(p: { id: number; name: string; isAvailable: boolean }): void {
+  getIO()?.emit('ProductAvailabilityChanged', { productId: p.id, name: p.name, isAvailable: p.isAvailable });
+}
 
 export const ProductService = {
   // ── Categories ──────────────────────────────────────────────
@@ -70,8 +76,10 @@ export const ProductService = {
   },
 
   async updateProduct(id: number, data: { categoryId?: number; name?: string; description?: string; price?: number; imageUrl?: string; preparationTime?: number; isAvailable?: boolean; displayOrder?: number }) {
-    await this.getProductById(id);
-    return prisma.product.update({ where: { id }, data: { ...data, updatedAt: new Date() }, include: productInclude });
+    const before = await this.getProductById(id);
+    const updated = await prisma.product.update({ where: { id }, data: { ...data, updatedAt: new Date() }, include: productInclude });
+    if (data.isAvailable !== undefined && data.isAvailable !== before.isAvailable) notifyAvailability(updated);
+    return updated;
   },
 
   async deleteProduct(id: number) {
@@ -79,8 +87,13 @@ export const ProductService = {
     await prisma.product.update({ where: { id }, data: { isActive: false, updatedAt: new Date() } });
   },
 
-  async toggleAvailability(id: number) {
+  /** Si `isAvailable` viene, lo fija (idempotente: igual valor no escribe ni emite); si no, alterna. */
+  async toggleAvailability(id: number, isAvailable?: boolean) {
     const p = await this.getProductById(id);
-    return prisma.product.update({ where: { id }, data: { isAvailable: !p.isAvailable, updatedAt: new Date() }, include: productInclude });
+    const next = isAvailable ?? !p.isAvailable;
+    if (next === p.isAvailable) return p;
+    const updated = await prisma.product.update({ where: { id }, data: { isAvailable: next, updatedAt: new Date() }, include: productInclude });
+    notifyAvailability(updated);
+    return updated;
   },
 };

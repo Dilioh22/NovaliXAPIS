@@ -62,7 +62,7 @@ export const InvoiceService = {
         },
         include,
       });
-    }, { isolationLevel: 'Serializable' });
+    }, { isolationLevel: 'Serializable', maxWait: 10000, timeout: 15000 });
   },
 
   async voidInvoice(id: number) {

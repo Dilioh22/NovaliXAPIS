@@ -40,7 +40,7 @@ router.get('/products/category/:categoryId',  authenticate, ProductController.ge
 router.post('/products',                      authenticate, authorize('Admin'), ProductController.createProduct);
 router.put('/products/:id',                   authenticate, authorize('Admin'), ProductController.updateProduct);
 router.delete('/products/:id',                authenticate, authorize('Admin'), ProductController.deleteProduct);
-router.patch('/products/:id/toggle-availability', authenticate, authorize('Admin', 'Cajero'), ProductController.toggleAvailability);
+router.patch('/products/:id/toggle-availability', authenticate, authorize('Admin', 'Cajero', 'Cocinero'), ProductController.toggleAvailability);
 
 // ── Tables ────────────────────────────────────────────────────
 router.get('/tables/zones',          authenticate, TableController.getZonesWithTables);

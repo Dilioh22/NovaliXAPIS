@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { ProductService } from '../services/product.service';
-import { createCategorySchema, updateCategorySchema, createProductSchema, updateProductSchema } from '../validators/schemas';
+import { createCategorySchema, updateCategorySchema, createProductSchema, updateProductSchema, toggleAvailabilitySchema } from '../validators/schemas';
 
 export const ProductController = {
   // Categories
@@ -40,6 +40,9 @@ export const ProductController = {
     try { await ProductService.deleteProduct(+req.params['id']!); res.status(204).send(); } catch (e) { next(e); }
   },
   toggleAvailability: async (req: Request, res: Response, next: NextFunction) => {
-    try { res.json(await ProductService.toggleAvailability(+req.params['id']!)); } catch (e) { next(e); }
+    try {
+      const { isAvailable } = toggleAvailabilitySchema.parse(req.body ?? {});
+      res.json(await ProductService.toggleAvailability(+req.params['id']!, isAvailable));
+    } catch (e) { next(e); }
   },
 };
