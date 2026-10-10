@@ -4,7 +4,11 @@ import { createOrderSchema, addOrderItemSchema, updateOrderSchema, updateOrderSt
 
 export const OrderController = {
   getAll: async (req: Request, res: Response, next: NextFunction) => {
-    try { res.json(await OrderService.getAllOrders(req.query['status'] as string)); } catch (e) { next(e); }
+    try {
+      const page     = req.query['page']     ? +req.query['page']     : undefined;
+      const pageSize = req.query['pageSize'] ? +req.query['pageSize'] : undefined;
+      res.json(await OrderService.getAllOrders(req.query['status'] as string, page, pageSize));
+    } catch (e) { next(e); }
   },
   getActive: async (_req: Request, res: Response, next: NextFunction) => {
     try { res.json(await OrderService.getActiveOrders()); } catch (e) { next(e); }

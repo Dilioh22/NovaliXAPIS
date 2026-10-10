@@ -4,9 +4,18 @@ import { NotFoundError, BusinessRuleError } from '../middleware/error.middleware
 const include = { table: { include: { zone: true } } };
 const CONFLICT_WINDOW_MS = 90 * 60 * 1000;
 
+function mapReservation(reservation: any): any {
+  if (!reservation) return reservation;
+  return {
+    ...reservation,
+    tableNumber: reservation.table?.number ?? undefined,
+    zoneName: reservation.table?.zone?.name ?? '',
+  };
+}
+
 export const ReservationService = {
   async getAll(date?: string, status?: string) {
-    return prisma.reservation.findMany({
+    const reservations = await prisma.reservation.findMany({
       where: {
         isActive: true,
         ...(date ? { reservationDate: { gte: new Date(date), lt: new Date(new Date(date).getTime() + 86400000) } } : {}),
@@ -15,16 +24,18 @@ export const ReservationService = {
       orderBy: { reservationDate: 'asc' },
       include,
     });
+    return reservations.map(mapReservation);
   },
 
   async getByTable(tableId: number) {
-    return prisma.reservation.findMany({ where: { tableId, isActive: true }, orderBy: { reservationDate: 'asc' }, include });
+    const reservations = await prisma.reservation.findMany({ where: { tableId, isActive: true }, orderBy: { reservationDate: 'asc' }, include });
+    return reservations.map(mapReservation);
   },
 
   async getById(id: number) {
     const r = await prisma.reservation.findFirst({ where: { id, isActive: true }, include });
     if (!r) throw new NotFoundError('Reservación', id);
-    return r;
+    return mapReservation(r);
   },
 
   async create(data: { tableId: number; customerName: string; customerPhone?: string; partySize?: number; reservationDate: string; notes?: string }) {
@@ -61,16 +72,17 @@ export const ReservationService = {
       await prisma.table.update({ where: { id: data.tableId }, data: { status: 'Reservada', updatedAt: new Date() } });
     }
 
-    return reservation;
+    return mapReservation(reservation);
   },
 
   async update(id: number, data: { tableId?: number; customerName?: string; customerPhone?: string; partySize?: number; reservationDate?: string; notes?: string }) {
     await this.getById(id);
-    return prisma.reservation.update({
+    const reservation = await prisma.reservation.update({
       where: { id },
       data: { ...data, reservationDate: data.reservationDate ? new Date(data.reservationDate) : undefined, updatedAt: new Date() },
       include,
     });
+    return mapReservation(reservation);
   },
 
   async updateStatus(id: number, status: string) {

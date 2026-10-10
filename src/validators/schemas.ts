@@ -34,6 +34,7 @@ export const createCategorySchema = z.object({
   description: z.string().max(500).optional(),
   displayOrder: z.number().int().default(0),
   iconName: z.string().max(100).optional(),
+  requiresKitchen: z.boolean().optional(),
 });
 
 export const updateCategorySchema = createCategorySchema.partial();

@@ -6,18 +6,31 @@ const tableInclude = {
   zone: true,
   orders: {
     where: { isActive: true, status: { notIn: ['Pagado', 'Cancelado'] } },
-    select: { id: true },
+    select: { id: true, createdAt: true, waiter: { select: { firstName: true, lastName: true } } },
     take: 1,
   },
 };
 
+function mapTable(table: any): any {
+  if (!table) return table;
+  const activeOrder = table.orders?.[0];
+  return {
+    ...table,
+    zoneName: table.zone?.name ?? '',
+    activeOrderId: activeOrder?.id ?? undefined,
+    waiterName: activeOrder?.waiter ? `${activeOrder.waiter.firstName} ${activeOrder.waiter.lastName}`.trim() : undefined,
+    occupiedSince: activeOrder?.createdAt ?? undefined,
+  };
+}
+
 export const TableService = {
   async getAllZonesWithTables() {
-    return prisma.tableZone.findMany({
+    const zones = await prisma.tableZone.findMany({
       where: { isActive: true },
       orderBy: { name: 'asc' },
       include: { tables: { where: { isActive: true }, orderBy: { number: 'asc' }, include: tableInclude } },
     });
+    return zones.map(z => ({ ...z, tables: z.tables.map(mapTable) }));
   },
 
   async getAllZones() {
@@ -25,13 +38,14 @@ export const TableService = {
   },
 
   async getAllTables() {
-    return prisma.table.findMany({ where: { isActive: true }, orderBy: { number: 'asc' }, include: tableInclude });
+    const tables = await prisma.table.findMany({ where: { isActive: true }, orderBy: { number: 'asc' }, include: tableInclude });
+    return tables.map(mapTable);
   },
 
   async getTableById(id: number) {
     const t = await prisma.table.findFirst({ where: { id, isActive: true }, include: tableInclude });
     if (!t) throw new NotFoundError('Mesa', id);
-    return t;
+    return mapTable(t);
   },
 
   async createZone(data: { name: string; description?: string }) {
@@ -45,19 +59,22 @@ export const TableService = {
     const duplicate = await prisma.table.findFirst({ where: { zoneId: data.zoneId, number: data.number, isActive: true } });
     if (duplicate) throw new BusinessRuleError(`Ya existe la mesa #${data.number} en esa zona.`);
 
-    return prisma.table.create({ data, include: tableInclude });
+    const table = await prisma.table.create({ data, include: tableInclude });
+    return mapTable(table);
   },
 
   async updateTable(id: number, data: { zoneId?: number; number?: number; capacity?: number; positionX?: number; positionY?: number; shape?: string }) {
     await this.getTableById(id);
-    return prisma.table.update({ where: { id }, data: { ...data, updatedAt: new Date() }, include: tableInclude });
+    const table = await prisma.table.update({ where: { id }, data: { ...data, updatedAt: new Date() }, include: tableInclude });
+    return mapTable(table);
   },
 
   async updateTableStatus(id: number, status: string) {
     await this.getTableById(id);
-    const table = await prisma.table.update({ where: { id }, data: { status, updatedAt: new Date() } });
-    getIO()?.to('tables').emit('TableStatusChanged', { tableId: id, status });
-    return table;
+    const table = await prisma.table.update({ where: { id }, data: { status, updatedAt: new Date() }, include: tableInclude });
+    const mapped = mapTable(table);
+    getIO()?.to('tables').emit('TableStatusChanged', { tableId: id, status, table: mapped });
+    return mapped;
   },
 
   async deleteTable(id: number) {
