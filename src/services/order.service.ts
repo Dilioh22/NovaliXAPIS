@@ -168,7 +168,8 @@ export const OrderService = {
         },
         include: orderInclude,
       });
-    });
+    // Base remota: con el límite por defecto (5 s) la transacción se cortaba a mitad. Igual que en payment.service.
+    }, { maxWait: 10000, timeout: 15000 });
 
     const mapped = mapOrder(order);
     getIO()?.to('kitchen').emit('NewOrder', mapped);
